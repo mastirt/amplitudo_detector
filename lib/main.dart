@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -35,8 +36,10 @@ class _SoundAnalyzerState extends State<SoundAnalyzer> {
   double _amplitude = 0.0;
   double _decibel = 0.0;
   bool _isAmplitudeHigh = false; 
-  bool _isAmplitudeLow = false; // Tambahkan variabel untuk mendeteksi amplitudo rendah
+  bool _isAmplitudeLow = false; // Variabel untuk mendeteksi amplitudo rendah
   StreamSubscription? _subscription;
+  Timer? _recordingTimer; // Timer untuk menghentikan dan memulai ulang rekaman
+  String? _filePath;
 
   @override
   void initState() {
@@ -46,15 +49,16 @@ class _SoundAnalyzerState extends State<SoundAnalyzer> {
 
   Future<void> _initRecorder() async {
     await _recorder.openRecorder();
-    _recorder.setSubscriptionDuration(Duration(milliseconds: 2000));
+    _recorder.setSubscriptionDuration(Duration(milliseconds: 1000));
   }
 
   Future<void> _startRecording() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final filePath = '${directory.path}/audio.wav';
+    final directory = await getExternalStorageDirectory();
+    _filePath = '${directory?.path}/audio.wav';
+    print('Audio saved to: $_filePath');
 
     await _recorder.startRecorder(
-      toFile: filePath,
+      toFile: _filePath,
       codec: Codec.pcm16WAV,
     );
 
@@ -82,9 +86,50 @@ class _SoundAnalyzerState extends State<SoundAnalyzer> {
     setState(() {
       _isRecording = true;
     });
+
+    // Timer untuk restart rekaman setiap 2 detik
+    _recordingTimer = Timer.periodic(Duration(seconds: 2), (timer) async {
+      await _restartRecording();
+    });
+  }
+
+  Future<void> _restartRecording() async {
+    // Stop the current recording
+    await _recorder.stopRecorder();
+    await _flutterFft.stopRecorder();
+    _subscription?.cancel();
+
+    // Optionally delete the previous file
+    if (_filePath != null) {
+      final file = File(_filePath!);
+      if (await file.exists()) {
+        await file.delete();
+        print('Deleted old recording: $_filePath');
+      }
+    }
+
+    // Restart the recording
+    final directory = await getExternalStorageDirectory();
+    _filePath = '${directory?.path}/audio.wav';
+    print('Restarting recording, audio saved to: $_filePath');
+
+    await _recorder.startRecorder(
+      toFile: _filePath,
+      codec: Codec.pcm16WAV,
+    );
+
+    await _flutterFft.startRecorder();
+
+    // Re-subscribe to recorder events
+    _subscription = _flutterFft.onRecorderStateChanged.listen((data) {
+      setState(() {
+        _frequency = double.tryParse(data[1].toString()) ?? 0.0;
+      });
+    });
   }
 
   Future<void> _stopRecording() async {
+    _recordingTimer?.cancel(); // Cancel the periodic timer
     await _recorder.stopRecorder();
     await _flutterFft.stopRecorder();
     _subscription?.cancel();
@@ -99,6 +144,7 @@ class _SoundAnalyzerState extends State<SoundAnalyzer> {
   @override
   void dispose() {
     _recorder.closeRecorder();
+    _recordingTimer?.cancel(); // Cancel the timer if it is still running
     super.dispose();
   }
 
@@ -134,13 +180,11 @@ class _SoundAnalyzerState extends State<SoundAnalyzer> {
               style: TextStyle(fontSize: 20),
             ),
             SizedBox(height: 20),
-            // Tampilkan peringatan jika amplitudo melebihi 1000
             if (_isAmplitudeHigh)
               Text(
                 'Peringatan: Suara terlalu tinggi!',
                 style: TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold),
               ),
-            // Tampilkan peringatan jika amplitudo rendah
             if (_isAmplitudeLow)
               Text(
                 'Keterangan: Suara rendah',
