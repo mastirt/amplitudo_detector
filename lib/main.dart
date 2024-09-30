@@ -46,7 +46,7 @@ class _SoundAnalyzerState extends State<SoundAnalyzer> {
 
   Future<void> _initRecorder() async {
     await _recorder.openRecorder();
-    _recorder.setSubscriptionDuration(Duration(milliseconds: 100));
+    _recorder.setSubscriptionDuration(Duration(milliseconds: 2000));
   }
 
   Future<void> _startRecording() async {
@@ -74,7 +74,7 @@ class _SoundAnalyzerState extends State<SoundAnalyzer> {
 
           // Ubah status berdasarkan amplitude
           _isAmplitudeHigh = _amplitude > 1000;
-          _isAmplitudeLow = _amplitude >= 90 && _amplitude <= 200;
+          _isAmplitudeLow = _amplitude >= 50 && _amplitude <= 100;
         });
       }
     });
